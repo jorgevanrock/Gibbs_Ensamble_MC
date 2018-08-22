@@ -45,6 +45,8 @@ void main(int argc, char *argv[]){
   atomo atom1[sys.sim1.nat], atom2[sys.sim2.nat];
   makeAtoms(sys.dim,sys.sim1,atom1);
   makeAtoms(sys.dim,sys.sim2,atom2);
+  sys.sim1.upot = energia_total(sys,sys.sim1,atom1,lj);
+  sys.sim2.upot = energia_total(sys,sys.sim2,atom2,lj);
   gibbs(sys,atom1,atom2,lj);
 }
 //###################################
@@ -202,11 +204,11 @@ double energia_total(struct sys sys,struct sim sim,atomo atom[],struct lj lj){
       upot += uij;
     }
   }
-  return upot/(double)sim.nat;
+  return upot;
 }
 //****************************************************** ENERGÍA POR ÁTOMO *
 double ener_atom(int o,struct sys sys,struct sim sim,atomo atom[],struct lj lj){
-  double uoj, uo=0.0;
+  double uoj=0.0f, uo=0.0f;
   int j;
 
   for(j=0;j<sim.nat;j++){
@@ -239,8 +241,6 @@ void mcmove(struct sys sys,atomo atom[],struct sim *sim,struct lj lj){
   int o;
   double xold,yold,zold,ener_old,ener_new,dE,beta;
 
-  (*sim).upot = energia_total(sys,*sim,atom,lj);
-
   o = rand()%(*sim).nat; 
 
   xold = atom[o].pos.x;
@@ -257,9 +257,8 @@ void mcmove(struct sys sys,atomo atom[],struct sim *sim,struct lj lj){
 
   ener_new = ener_atom(o,sys,*sim,atom,lj);
   dE = ener_new - ener_old;
-  
   //metropolis
-  beta = sys.temp;
+  beta = 1.0f/sys.temp;
   if( dE < 0.0f  ||  Random() < exp(-beta*dE) ){
     (*sim).upot += dE;  
   }
@@ -280,7 +279,7 @@ void gibbs(struct sys sys,atomo atom1[],atomo atom2[],struct lj lj){
     if(volado() == 1)   mcmove(sys,atom1,&(sys.sim1),lj);   
     else                mcmove(sys,atom2,&(sys.sim2),lj);
   
-    printf("%i  %lf  %lf\n",step,sys.sim1.upot,sys.sim2.upot);
+    printf("%i  %lf  %lf\n",step,sys.sim1.upot/(double)sys.sim1.nat,sys.sim2.upot/(double)sys.sim2.nat);
 
     step++;
   }

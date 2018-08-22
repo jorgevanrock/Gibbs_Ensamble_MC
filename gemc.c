@@ -11,8 +11,8 @@
 
 //**************************************************** STRUCTS *
 struct box{double x;double y;double z;};
-struct sim{int nat;double dens;struct box box;};
-struct sys{int nat;double dens;double rcut;int dim;char potential[5];struct sim sim1,sim2;struct box box;};
+struct sim{int nat;double dens;double upot;struct box box;};
+struct sys{int nat;double dens;double mcStep;double rcut;double temp;double dr;int dim;char potential[5];struct sim sim1,sim2;struct box box;};
 struct lj{double sig;double eps;};
 struct vector{double x;double y;double z;};
 typedef struct {int esp;struct vector pos;} atomo;
@@ -28,6 +28,8 @@ void printXYZ(char outxyz[],int dim,struct sim sim,atomo atom[]);
 double potencial(struct sys sys,struct sim sim,atomo atom[],int i,int j,struct lj lj);
 double energia_total(struct sys sys,struct sim sim,atomo atom[],struct lj lj);
 double ener_atom(int o,struct sys sys,struct sim sim,atomo atom[],struct lj lj);
+void mcmove(struct sys sys,atomo atom[],struct sim *sim,struct lj lj);
+void gibbs(struct sys sys,atomo atom1[],atomo atom2[],struct lj lj);
 
 //######### MAIN GEMC ###############
 void main(int argc, char *argv[]){
@@ -47,6 +49,11 @@ void main(int argc, char *argv[]){
   
   printf("energía total Sistema 1: %lf\n",energia_total(sys,sys.sim1,atom1,lj));
   printf("energía total Sistema 2: %lf\n",energia_total(sys,sys.sim2,atom2,lj));
+
+  //call gibbs
+  gibbs(sys,atom1,atom2,lj);
+  printXYZ("conf1.2.xyz",sys.dim,sys.sim1,atom1);
+
 
 }
 //###################################
@@ -93,6 +100,9 @@ void readData(char inFile[],struct sys *sys,struct lj *lj){
     fscanf(f,"%lf\t%s\n",&(sys->rcut),name);
     fscanf(f,"%s\t%s\n",sys->potential,name);
     fscanf(f,"%lf\t%lf\t%s\n",&(lj->sig),&(lj->eps),name);
+    fscanf(f,"%lf\t%s\n",&(sys->dr),name);
+    fscanf(f,"%lf\t%s\n",&(sys->temp),name);
+    fscanf(f,"%lf\t%s\n",&(sys->mcStep),name);
   fclose(f);
 
   //Num atomos total
@@ -215,4 +225,54 @@ double ener_atom(int o,struct sys sys,struct sim sim,atomo atom[],struct lj lj){
     }
   }
   return uo;
+}
+//**************************************************
+int volado(){
+  double aux;
+
+  aux = Random();
+  if(aux < 0.5f)   return 1;
+  else             return 2;
+}
+//**************************************************
+void mcmove(struct sys sys,atomo atom[],struct sim *sim,struct lj lj){
+  int o;
+  double xold,yold,zold,ener_old,ener_new,dE,beta;
+
+  o = rand()%(*sim).nat; 
+
+  xold = atom[o].pos.x;
+  yold = atom[o].pos.y;
+  if(sys.dim == 3)   zold = atom[o].pos.z;
+
+  ener_old = ener_atom(o,sys,*sim,atom,lj);
+
+  atom[o].pos.x += (2.0f*Random() - 1.0f)*sys.dr; 
+  atom[o].pos.y += (2.0f*Random() - 1.0f)*sys.dr; 
+  if(sys.dim == 3)   atom[o].pos.z += (2.0f*Random() - 1.0f)*sys.dr; 
+
+  ener_new = ener_atom(o,sys,*sim,atom,lj);
+  dE = ener_new - ener_old;
+  
+  //metropolis
+  beta = sys.temp;
+  if( dE < 0.0f  ||  Random() < exp(-beta*dE) ){
+    (*sim).upot += dE;  
+  }
+  else{
+    atom[o].pos.x = xold; 
+    atom[o].pos.y = yold; 
+    if(sys.dim == 3)   atom[o].pos.z = zold; 
+  }
+}
+//**************************************************
+void gibbs(struct sys sys,atomo atom1[],atomo atom2[],struct lj lj){
+  int step;
+
+  step = 0;
+  while(step < sys.mcStep){
+    if(volado() == 1)   mcmove(sys,atom1,&(sys.sim1),lj);   
+    else                mcmove(sys,atom2,&(sys.sim2),lj);
+    step++;
+  }
 }

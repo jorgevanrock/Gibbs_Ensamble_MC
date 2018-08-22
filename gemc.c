@@ -28,6 +28,7 @@ void printXYZ(char outxyz[],int dim,struct sim sim,atomo atom[]);
 double potencial(struct sys sys,struct sim sim,atomo atom[],int i,int j,struct lj lj);
 double energia_total(struct sys sys,struct sim sim,atomo atom[],struct lj lj);
 double ener_atom(int o,struct sys sys,struct sim sim,atomo atom[],struct lj lj);
+void pbc(double *x,double *y,double *z,struct box box);
 void mcmove(struct sys sys,atomo atom[],struct sim *sim,struct lj lj);
 void gibbs(struct sys sys,atomo atom1[],atomo atom2[],struct lj lj);
 
@@ -44,17 +45,7 @@ void main(int argc, char *argv[]){
   atomo atom1[sys.sim1.nat], atom2[sys.sim2.nat];
   makeAtoms(sys.dim,sys.sim1,atom1);
   makeAtoms(sys.dim,sys.sim2,atom2);
-  printXYZ("conf1.xyz",sys.dim,sys.sim1,atom1);
-  printXYZ("conf2.xyz",sys.dim,sys.sim2,atom2);
-  
-  printf("energía total Sistema 1: %lf\n",energia_total(sys,sys.sim1,atom1,lj));
-  printf("energía total Sistema 2: %lf\n",energia_total(sys,sys.sim2,atom2,lj));
-
-  //call gibbs
   gibbs(sys,atom1,atom2,lj);
-  printXYZ("conf1.2.xyz",sys.dim,sys.sim1,atom1);
-
-
 }
 //###################################
 void compBoxAux(int dim,double dens,int nat,double box[]){
@@ -82,7 +73,6 @@ void compBox(struct sys *sys){
   (*sys).sim2.box.x = box[0];
   (*sys).sim2.box.y = box[1];
   if((*sys).dim == 3)   (*sys).sim2.box.z = box[2];
-
 }
 //****************************************************** READ DATA *
 void readData(char inFile[],struct sys *sys,struct lj *lj){
@@ -116,6 +106,7 @@ void readData(char inFile[],struct sys *sys,struct lj *lj){
   printf("lx2: %lf ly2: %lf  lz2: %lf\n",(*sys).sim2.box.x,(*sys).sim2.box.y,(*sys).sim2.box.z);
   printf("potencial: %s\n",(*sys).potential);
   printf("epsilon: %lf  sigma: %lf\n",(*lj).eps,(*lj).sig);
+
 }
 //*************************************************** MINIMA IMAGEN *
 void minima(int dim,struct box box,double *dx,double *dy,double *dz){
@@ -226,7 +217,7 @@ double ener_atom(int o,struct sys sys,struct sim sim,atomo atom[],struct lj lj){
   }
   return uo;
 }
-//**************************************************
+//***************************************** VOLADO *
 int volado(){
   double aux;
 
@@ -234,10 +225,21 @@ int volado(){
   if(aux < 0.5f)   return 1;
   else             return 2;
 }
-//**************************************************
+//******************************************** PBC *
+void pbc(double *x,double *y,double *z,struct box box){
+  if(*x > box.x)         *x -= box.x;
+  else if(*x <0.0f)      *x += box.x;
+  if(*y > box.y)         *y -= box.y;
+  else if(*y <0.0f)      *y += box.y;
+  if(*z > box.z)         *z -= box.z;
+  else if(*z <0.0f)      *z += box.z;
+}
+//******************************************* MC MOVE *
 void mcmove(struct sys sys,atomo atom[],struct sim *sim,struct lj lj){
   int o;
   double xold,yold,zold,ener_old,ener_new,dE,beta;
+
+  (*sim).upot = energia_total(sys,*sim,atom,lj);
 
   o = rand()%(*sim).nat; 
 
@@ -250,6 +252,8 @@ void mcmove(struct sys sys,atomo atom[],struct sim *sim,struct lj lj){
   atom[o].pos.x += (2.0f*Random() - 1.0f)*sys.dr; 
   atom[o].pos.y += (2.0f*Random() - 1.0f)*sys.dr; 
   if(sys.dim == 3)   atom[o].pos.z += (2.0f*Random() - 1.0f)*sys.dr; 
+
+  pbc(&(atom[o].pos.x), &(atom[o].pos.y), &(atom[o].pos.z),(*sim).box );
 
   ener_new = ener_atom(o,sys,*sim,atom,lj);
   dE = ener_new - ener_old;
@@ -265,14 +269,20 @@ void mcmove(struct sys sys,atomo atom[],struct sim *sim,struct lj lj){
     if(sys.dim == 3)   atom[o].pos.z = zold; 
   }
 }
-//**************************************************
+//*************************************************** GIBBS *
 void gibbs(struct sys sys,atomo atom1[],atomo atom2[],struct lj lj){
   int step;
 
   step = 0;
-  while(step < sys.mcStep){
+  printf("STEP\tUPOT1\tUPOT2\n");
+
+  while(step <= sys.mcStep){
     if(volado() == 1)   mcmove(sys,atom1,&(sys.sim1),lj);   
     else                mcmove(sys,atom2,&(sys.sim2),lj);
+  
+    printf("%i  %lf  %lf\n",step,sys.sim1.upot,sys.sim2.upot);
+
     step++;
   }
 }
+//*************************************************************

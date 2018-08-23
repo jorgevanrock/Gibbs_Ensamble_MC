@@ -2,4 +2,5 @@
 GEMC
 GEN_RAN2
 *xyz
-run.dat
+out
+gdr*

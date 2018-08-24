@@ -15,7 +15,7 @@ struct sim{int nat;double dens;double upot;double chemPot;struct box box;};
 struct sys{int nat;double dens;double mcStep;double rcut;double temp;double dr;double dv;int dim;char potential[5];struct sim sim1,sim2;struct box box;};
 struct lj{double sig;double eps;};
 struct vector{double x;double y;double z;};
-typedef struct {int esp;struct vector pos;} atomo;
+typedef struct {struct vector pos;} atomo;
 
 //**************************************************** PROTOTIPOS *
 void compBoxAux(int dim,double dens,int nat,double box[]);
@@ -160,8 +160,7 @@ void makeAtoms(int dim,struct sim sim,atomo atom[]){
     if(traslape(dim,sim,atom,nparti,xo,yo,zo) == NO){
       atom[nparti].pos.x = xo;
       atom[nparti].pos.y = yo;
-      if(dim == 3)   atom[nparti].pos.z = zo;
-      atom[nparti].esp = 1;
+      atom[nparti].pos.z = zo;
       nparti++;
     }
   }
@@ -175,9 +174,7 @@ void printXYZ(char outxyz[],int dim,struct sim sim,atomo atom[]){
   f = fopen(outxyz,"w");
   fprintf(f,"%d\n\n",sim.nat);
   for(i=0;i<sim.nat;i++){
-    fprintf(f,"%i %lf %lf ",atom[i].esp, atom[i].pos.x, atom[i].pos.y);
-    if(dim == 3)   fprintf(f,"%lf\n",atom[i].pos.z);
-    else           fprintf(f,"\n");
+    fprintf(f,"1 %lf %lf %lf\n",atom[i].pos.x, atom[i].pos.y, atom[i].pos.z);
   }
 }
 //********************************************************* POTENCIAL *
@@ -228,7 +225,7 @@ double ener_atom(int o,struct sys sys,struct sim sim,atomo atom[],struct lj lj){
 //************************************** SUPER PRINT *
 void superPrint(int dim,int nat1,int nat2,atomo atom1[],atomo atom2[],double lx){
   int i,nat;
-  double sepp = 5.0;
+  double sepp = 8.0;
   FILE *f;
 
   nat = nat1 + nat2;
@@ -236,14 +233,10 @@ void superPrint(int dim,int nat1,int nat2,atomo atom1[],atomo atom2[],double lx)
   f = fopen("super.xyz","a");
     fprintf(f,"%d\n\n",nat);
     for(i=0;i<nat1;i++){
-      fprintf(f,"1 %lf %lf ",atom1[i].esp, atom1[i].pos.x, atom1[i].pos.y);
-      if(dim == 3)   fprintf(f,"%lf\n",atom1[i].pos.z);
-      else           fprintf(f,"\n");
+      fprintf(f,"1 %lf %lf %lf\n",atom1[i].pos.x, atom1[i].pos.y, atom1[i].pos.z);
     }
     for(i=0;i<nat2;i++){
-      fprintf(f,"1 %lf %lf ",atom2[i].esp, atom2[i].pos.x+lx+sepp, atom2[i].pos.y);
-      if(dim == 3)   fprintf(f,"%lf\n",atom2[i].pos.z);
-      else           fprintf(f,"\n");
+      fprintf(f,"1 %lf %lf %lf\n",atom2[i].pos.x+lx+sepp, atom2[i].pos.y, atom2[i].pos.z);
     }
   fclose(f);
 }
@@ -294,11 +287,13 @@ void escala(double factor,struct sim *sim,atomo atom[],int dim){
 
   (*sim).box.y = (*sim).box.x;
   if(dim == 3)   (*sim).box.z = (*sim).box.x;
+  else           (*sim).box.z = 0.0f;
 
   for(i=0;i < (*sim).nat; i++){
      atom[i].pos.x *= factor;
      atom[i].pos.y *= factor;
      if(dim == 3)   atom[i].pos.z *= factor;
+     else           atom[i].pos.z = 0.0f;
   }
 }
 //*************************************************** MC VOLUME *
@@ -388,7 +383,7 @@ void screen(int step,struct sys sys){
 //********************************************** CREAR PARTÍCULA *
 void creaParti(struct sys sys,struct sim *simA,struct sim *simB,atomo atomA[],atomo atomB[],struct lj lj){
   double volA,volB,upnew,upDest,arg,beta = sys.temp,ax,ay,az;
-  int nat,oDest,dim = sys.dim,nA,nB,jren;
+  int nat,oCrea,oDest,dim = sys.dim,nA,nB,jren;
 
   if((*simB).nat != 0){
     nat = (*simA).nat + (*simB).nat;
@@ -396,22 +391,25 @@ void creaParti(struct sys sys,struct sim *simA,struct sim *simB,atomo atomA[],at
     volA = (*simA).box.x * (*simA).box.y;
     if(dim == 3)   volA *= (*simA).box.z;
 
-    atomA[(*simA).nat].pos.x = Random() * (*simA).box.x;
-    atomA[(*simA).nat].pos.y = Random() * (*simA).box.y;
-    if(dim == 3)   atomA[(*simA).nat].pos.z = Random() * (*simA).box.z;
+    oCrea = (*simA).nat;
+    atomA[oCrea].pos.x = Random() * (*simA).box.x;
+    atomA[oCrea].pos.y = Random() * (*simA).box.y;
+    if(dim == 3)   atomA[oCrea].pos.z = Random() * (*simA).box.z;
+    else           atomA[oCrea].pos.z = 0.0f;
+
     (*simA).nat += 1;
 
-    upnew = ener_atom((*simA).nat,sys,*simA,atomA,lj);
+    upnew = ener_atom(oCrea,sys,*simA,atomA,lj);
    
     nB = (*simB).nat;
     volB = (*simB).box.x * (*simB).box.y;
     if(dim == 3)   volB *= (*simB).box.z;
   
-    oDest = (int)((double)((*simB).nat) * Random());
+    oDest = (int)(rand() % nB);
     upDest = ener_atom(oDest,sys,*simB,atomB,lj);
   
     //Criterio de aceptación
-    arg = upnew - upDest + log( (volB*(double)(nA+1)) / (volB*(double)nB) )/beta;
+    arg = upnew - upDest + log( (volB*(double)(nA+1)) / (volA*(double)(nB)) )/beta;
     if(Random() < exp(-arg*beta)){
       (*simA).upot += upnew;
       (*simB).upot -= upDest; 
@@ -421,17 +419,17 @@ void creaParti(struct sys sys,struct sim *simA,struct sim *simB,atomo atomA[],at
       while(jren < nB){
         ax = atomB[jren].pos.x;
         ay = atomB[jren].pos.y;
-        if(dim == 3)   az = atomB[jren].pos.z;
+        az = atomB[jren].pos.z;
         atomB[jren - 1].pos.x = ax;
         atomB[jren - 1].pos.y = ay;
-        if(dim == 3)   atomB[jren - 1].pos.z = az;
+        atomB[jren - 1].pos.z = az;
         jren++;
       }
     }
     else{
       atomA[(*simA).nat].pos.x = 0.0f;
       atomA[(*simA).nat].pos.y = 0.0f;
-      if(dim == 3)   atomA[(*simA).nat].pos.z = 0.0f;
+      atomA[(*simA).nat].pos.z = 0.0f;
       (*simA).nat -= 1;
     }
   }
@@ -452,7 +450,7 @@ void gibbs(struct sys *sys,atomo atom1[],atomo atom2[],struct lj lj){
       case 4:   creaParti(*sys,&((*sys).sim1),&((*sys).sim2),atom1,atom2,lj); break;
       case 5:   creaParti(*sys,&((*sys).sim2),&((*sys).sim1),atom2,atom1,lj); break;
     }
-    if(step%1 == 0){
+    if(step%500 == 0){
       superPrint((*sys).dim,(*sys).sim1.nat,(*sys).sim2.nat,atom1,atom2,(*sys).sim1.box.x);
       screen(step,*sys);
     }

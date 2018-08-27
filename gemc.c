@@ -305,39 +305,29 @@ mueve++;
 }
 //********************************************* AJUSTA DR *
 void ajustaDr(struct move *move,struct sys sys,struct sim *sim){
-  double minL,fracc,dro,fac;
+  double minL,fracc;
 
   if((*move).intentos != 0){
     minL = (*sim).box.x;
   
-    fracc = (double)((*move).accep) / (double)((*move).intentos);
-    dro = (*sim).dr;
-    (*sim).dr *= fabs(fracc*100.0f / (sys.accep));
-    fac = (*sim).dr/dro;
-    if(fac > 1.5f)                   (*sim).dr = dro*1.5f;
-    else if(fac < 0.5f)              (*sim).dr = dro*0.5f;
-    else if((*sim).dr > 0.5f*minL)   (*sim).dr = 0.5f*minL;
-  
+    fracc = 100.0f * (double)((*move).accep) / (double)((*move).intentos);
+    if(fracc > sys.accep)        sim->dr *= 1.05f;
+    else                         sim->dr *= 0.95f; 
+    if(sim->dr > 0.5f*minL)     sim->dr  = 0.5f*minL;
+
     (*move).accep = 0;
     (*move).intentos = 0;
   }
 }
 //********************************************* AJUSTA DV *
 void ajustaDv(struct move *volu,struct sys *sys){
-  double minL,fracc,dvo,fac;
+  double minL,fracc;
 
   if((*volu).intentos != 0){
-    if((*sys).sim1.box.x < (*sys).sim2.box.x)   minL = (*sys).sim1.box.x;
-    else                                        minL = (*sys).sim2.box.x;
-  
-    fracc = (double)((*volu).accep) / (double)((*volu).intentos);
-    dvo = (*sys).dv;
-    (*sys).dv *= fabs(fracc*100.0f / (sys->accep));
-    fac = (*sys).dv/dvo;
-    if(fac > 1.5f)                   (*sys).dv = dvo*1.5f;
-    else if(fac < 0.5f)              (*sys).dv = dvo*0.5f;
-    else if((*sys).dv > 0.5f*minL)   (*sys).dv = 0.5f*minL;
-  
+    fracc = 100.0f * (double)((*volu).accep) / (double)((*volu).intentos);
+    if(fracc > sys->accep)   sys->dv *= 1.05f;
+    else                     sys->dv *= 0.95f; 
+
     (*volu).accep = 0;
     (*volu).intentos = 0;
   }
@@ -436,7 +426,7 @@ void screen(int step,struct sys sys,int flag){
   
   f = fopen("out.txt","a");
   switch(flag){
-    case 1:   printf("STEP\tUPOT1\tUPOT2\tDENS1\tDENS2\tDR1\tDR2\tDV\n"); break;
+    case 1:   printf("STEP\tUPOT1\t  UPOT2\t   DENS1\tDENS2\t  DR1\t   DR2\t   DV\t   VOL_TOT\n"); break;
     case 2:   {
       upot1 = sys.sim1.upot/(double)(sys.sim1.nat);
       upot2 = sys.sim2.upot/(double)(sys.sim2.nat);
@@ -457,7 +447,7 @@ void creaParti(struct sys sys,struct sim *simA,struct sim *simB,atomo atomA[],at
   double volA,volB,upnew,upDest,arg,beta = sys.temp,ax,ay,az;
   int nat,oCrea,oDest,dim = sys.dim,nA,nB,jren;
 
-int swap=0,N=50;
+int swap=0,N=100;
   if((*simB).nat != 0){
 while(swap < N  &&  (*simB).nat != 0){
     nat = (*simA).nat + (*simB).nat;
@@ -514,10 +504,10 @@ void gibbs(struct sys *sys,atomo atom1[],atomo atom2[],struct lj lj,struct move 
   int step,caso;
 
   step = 0;
-  screen(step,*sys,1);
 
   while(step <= (*sys).mcStep){
     caso = elige(5);
+    if(step%1500 == 0)   screen(step,*sys,1);
     switch(caso){
       case 1:   mcmove(*sys,atom1,&((*sys).sim1),lj,move1); break;   
       case 2:   mcmove(*sys,atom2,&((*sys).sim2),lj,move2); break;

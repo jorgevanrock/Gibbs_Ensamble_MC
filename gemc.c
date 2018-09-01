@@ -12,9 +12,6 @@ void main(int argc, char *argv[]){
   clear(); 
   if(argc < 2 || argc >2){printf("Syntax: ./exe  <run.file>\n");exit(0);}
   strcpy(inFile,argv[1]);
-  move1.accep = 0;   move1.intentos = 0;
-  move2.accep = 0;   move2.intentos = 0;
-  volu.accep  = 0;   volu.intentos  = 0;
 
   readData(inFile, &sys, &lj);
 
@@ -23,14 +20,7 @@ void main(int argc, char *argv[]){
   makeAtoms(sys.dim,sys.sim1,atom1);
   makeAtoms(sys.dim,sys.sim2,atom2);
 
-  energia_total(&u,&vi,sys,sys.sim1,atom1,lj);
-  sys.sim1.upot = u;   sys.sim1.virial = vi;
-
-  energia_total(&u,&vi,sys,sys.sim2,atom2,lj);
-  sys.sim2.upot = u;   sys.sim2.virial = vi;
-
-  sys.sim1.chemPot = chemPot(sys.sim1.nat,1.0f/sys.temp,sys.sim1.box.x*sys.sim1.box.y*sys.sim1.box.z,sys.sim1.upot/(double)(sys.sim1.nat));
-  sys.sim2.chemPot = chemPot(sys.sim2.nat,1.0f/sys.temp,sys.sim2.box.x*sys.sim2.box.y*sys.sim2.box.z,sys.sim2.upot/(double)(sys.sim2.nat));
+  init(&u,&vi,atom1,atom2,&move1,&move2,&volu,&sys,lj);
 
   gibbs(&sys,atom1,atom2,lj,&move1,&move2,&volu,&samp);
 }
@@ -122,6 +112,15 @@ void makeAtoms(int dim,struct sim sim,atomo atom[]){
     }
   }
 }
+//*********************************************** POTENCIAL QUÍMICO *
+double chemPot(int nat,double beta,double vol,double U){
+  double mu=0,N;
+
+  N = (double)(nat + 1);
+  mu = vol * exp(-beta*U) / N;
+  
+  return mu;
+}
 
 //********************************************************* POTENCIAL *
 void potencial(double *u,double *vi,struct sys sys,struct sim sim,atomo atom[],int i,int j,struct lj lj){
@@ -172,6 +171,24 @@ void ener_atom(int o,double *uo,double *vio,struct sys sys,struct sim sim,atomo 
       *vio += av; //virial
     }
   }
+}
+//*********************************************************** INICIALIZACIÓN *
+void init(double *u,double *vi,atomo atom1[],atomo atom2[],struct move *move1,struct move *move2,struct move *volu,struct sys *sys,struct lj lj){
+  int nat1 = (*sys).sim1.nat, nat2 = (*sys).sim2.nat;
+  double vol1 = sys->sim1.box.x*sys->sim1.box.y*sys->sim1.box.z, vol2 = sys->sim2.box.x*sys->sim2.box.y*sys->sim2.box.z, beta = 1.0f/sys->temp,u1 = sys->sim1.upot, u2 = sys->sim2.upot;
+
+  (*move1).accep = 0;   (*move1).intentos = 0;
+  (*move2).accep = 0;   (*move2).intentos = 0;
+  (*volu).accep  = 0;   (*volu).intentos  = 0;
+  
+  (*sys).sim1.chemPot = chemPot(nat1,beta,vol1,u1/(double)(nat1));
+  (*sys).sim2.chemPot = chemPot(nat2,beta,vol2,u2/(double)(nat2));
+
+  energia_total(u,vi,*sys,sys->sim1,atom1,lj);
+  (*sys).sim1.upot = *u;   (*sys).sim1.virial = *vi;
+
+  energia_total(u,vi,*sys,sys->sim2,atom2,lj);
+  (*sys).sim2.upot = *u;   (*sys).sim2.virial = *vi;
 }
 //******************************************** PBC *
 void pbc(double *x,double *y,double *z,struct box box){
@@ -338,15 +355,6 @@ void mcvol(struct sys *sys,atomo atom1[],atomo atom2[],struct lj lj,struct move 
     escala(fac2,&(*sys).sim2,atom2,dim);
   }
   (*volu).intentos++;  
-}
-//*********************************************** POTENCIAL QUÍMICO *
-double chemPot(int nat,double beta,double vol,double U){
-  double mu=0,N;
-
-  N = (double)(nat + 1);
-  mu = vol * exp(-beta*U) / N;
-  
-  return mu;
 }
 //********************************************** CREAR PARTÍCULA *
 void creaParti(struct sys sys,struct sim *simA,struct sim *simB,atomo atomA[],atomo atomB[],struct lj lj,int *samp){

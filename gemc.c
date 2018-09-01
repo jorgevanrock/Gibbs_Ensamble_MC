@@ -35,12 +35,14 @@ void pbc(double *x,double *y,double *z,struct box box);
 void mcmove(struct sys sys,atomo atom[],struct sim *sim,struct lj lj,struct move *move);
 void escala(double factor,struct sim *sim,atomo atom[],int dim);
 void mcvol(struct sys *sys,atomo atom1[],atomo atom2[],struct lj lj,struct move *volu);
+double chemPot(int nat,double beta,double vol,double U);
 void creaParti(struct sys sys,struct sim *simA,struct sim *simB,atomo atomA[],atomo atomB[],struct lj lj);
 void screen(int step,struct sys sys,int flag);
 void ajustaDr(struct move *move,struct sys sys,struct sim *sim);
 void ajustaDv(struct move *volu,struct sys *sys);
 void gibbs(struct sys *sys,atomo atom1[],atomo atom2[],struct lj lj,struct move *move1,struct move *move2,struct move *volu);
 
+int samp=1;
 //######### MAIN GEMC ###############
 void main(int argc, char *argv[]){
   char inFile[15]="";
@@ -69,8 +71,8 @@ void main(int argc, char *argv[]){
   energia_total(&u,&vi,sys,sys.sim2,atom2,lj);
   sys.sim2.upot = u;   sys.sim2.virial = vi;
 
-  sys.sim1.chemPot = chemPot();
-    (*simA).chemPot += chemPot(oCrea+1,beta,volA,upnew);
+  sys.sim1.chemPot = chemPot(sys.sim1.nat,1.0f/sys.temp,sys.sim1.box.x*sys.sim1.box.y*sys.sim1.box.z,sys.sim1.upot/(double)(sys.sim1.nat));
+  sys.sim2.chemPot = chemPot(sys.sim2.nat,1.0f/sys.temp,sys.sim2.box.x*sys.sim2.box.y*sys.sim2.box.z,sys.sim2.upot/(double)(sys.sim2.nat));
 
   gibbs(&sys,atom1,atom2,lj,&move1,&move2,&volu);
 }
@@ -451,12 +453,12 @@ int elige(int N){
 }
 //******************************************** IMPRIME PANTALLA *
 void screen(int step,struct sys sys,int flag){
-  double vol1,vol2,upot1,upot2,press1,press2,dens1,dens2;
+  double mu1,mu2,vol1,vol2,upot1,upot2,press1,press2,dens1,dens2;
   FILE *f;
   
   f = fopen("out.txt","a");
   switch(flag){
-    case 1:   printf("STEP   \tUPOT1   \tUPOT2   \tDENS1   \tDENS2   \tDR1   \tDR2   \tDV   \tVOL_TOT   \tPRESS1   \tPRESS2\n"); break;
+    case 1:   printf("STEP   \tUPOT1   \tUPOT2   \tDENS1   \tDENS2   \tDR1   \tDR2   \tDV   \tMU1   \tMU2   \tPRESS1   \tPRESS2\n"); break;
     case 2:   {
       upot1 = sys.sim1.upot/(double)(sys.sim1.nat);
       upot2 = sys.sim2.upot/(double)(sys.sim2.nat);
@@ -468,9 +470,13 @@ void screen(int step,struct sys sys,int flag){
       dens2 = (double)(sys.sim2.nat)/vol2;
       press1 = dens1 * sys.temp + sys.sim1.virial/((double)(sys.dim)*vol1);
       press2 = dens2 * sys.temp + sys.sim2.virial/((double)(sys.dim)*vol2);
+      mu1 = -log(sys.sim1.chemPot / (double)(samp)) * sys.temp;
+      mu2 = -log(sys.sim2.chemPot / (double)(samp)) * sys.temp;
 
-      printf("%i\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\n",step,upot1,upot2,dens1,dens2,sys.sim1.dr,sys.sim2.dr,sys.dv,vol1+vol2,press1,press2);
-      fprintf(f,"%i\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\n",step,upot1,upot2,dens1,dens2,sys.sim1.dr,sys.sim2.dr,sys.dv,vol1+vol2,press1,press2);
+      //printf("%lf\t%lf\t%lf\t%lf\n",dens1,dens2,mu1,mu2);
+
+      printf("%i\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\n",step,upot1,upot2,dens1,dens2,sys.sim1.dr,sys.sim2.dr,sys.dv,mu1,mu2,press1,press2);
+      fprintf(f,"%i\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\n",step,upot1,upot2,dens1,dens2,mu1,mu2,press1,press2);
     }; break;
   }
   fclose(f);
@@ -479,7 +485,7 @@ void screen(int step,struct sys sys,int flag){
 double chemPot(int nat,double beta,double vol,double U){
   double mu=0,N;
 
-  N = (double)(nat);
+  N = (double)(nat + 1);
   mu = vol * exp(-beta*U) / N;
   
   return mu;
@@ -508,7 +514,7 @@ void creaParti(struct sys sys,struct sim *simA,struct sim *simB,atomo atomA[],at
     upnew = u;
     vpnew = vi;   
 
-    (*simA).chemPot += chemPot(oCrea+1,beta,volA,upnew);
+    (*simA).chemPot += chemPot(nA,beta,volA,upnew);
 
     nB = (*simB).nat;
     volB = (*simB).box.x * (*simB).box.y;
@@ -522,6 +528,7 @@ void creaParti(struct sys sys,struct sim *simA,struct sim *simB,atomo atomA[],at
     //Criterio de aceptación
     arg = upnew - upDest + log( (volB*(double)(nA+1)) / (volA*(double)(nB)) )/beta;
     if(Random() < exp(-arg*beta)){
+	    samp++;
       (*simA).upot += upnew;
       (*simB).upot -= upDest;
       (*simA).virial += vpnew;
@@ -557,7 +564,6 @@ void gibbs(struct sys *sys,atomo atom1[],atomo atom2[],struct lj lj,struct move 
 
   while(step <= (*sys).mcStep){
     caso = elige(5);
-    if(step%2500 == 0)   screen(step,*sys,1);
     if(step%(*sys).nPrint == 0){
       superPrint((*sys).dim,(*sys).sim1.nat,(*sys).sim2.nat,atom1,atom2,(*sys).sim1.box.x);
       screen(step,*sys,2);

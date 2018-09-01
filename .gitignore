@@ -1,7 +1,9 @@
 *.out
 GEMC
-GEN_RAN2
+Random.h
+ran2.h
 *xyz
 out
 gdr*
 *txt
+

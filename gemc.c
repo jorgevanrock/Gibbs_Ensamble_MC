@@ -1,48 +1,5 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <math.h>
-#include <time.h>
-#include "GEN_RAN2/ran2.h"
-#include "GEN_RAN2/Random.h"
+#include "SRC/header.h"
 
-#define SI 1
-#define NO 0
-
-//**************************************************** STRUCTS *
-struct box{double x;double y;double z;};
-struct sim{int nat;double dens;double upot;double chemPot;double virial;struct box box;double dr;};
-struct sys{int nat;double dens;double mcStep;int nAjusta;int nPrint;double accep;double rcut;double temp;double dv;int dim;char potential[5];struct sim sim1,sim2;struct box box;};
-struct lj{double sig;double eps;};
-struct vector{double x;double y;double z;};
-typedef struct {struct vector pos;} atomo;
-struct move{int accep; int intentos;};
-
-//**************************************************** PROTOTIPOS *
-void clear();
-void compBoxAux(int dim,double dens,int nat,double box[]);
-void compBox(struct sys *sys);
-void readData(char inFile[],struct sys *sys,struct lj *lj);
-void minima(int dim,struct box box,double *dx,double *dy,double *dz);
-int traslape(int dim,struct sim sim,atomo atom[],int atoms,double xo,double yo,double zo);
-void makeAtoms(int dim,struct sim sim,atomo atom[]);
-void printXYZ(char outxyz[],int dim,struct sim sim,atomo atom[]);
-void superPrint(int dim,int nat1,int nat2,atomo atom1[],atomo atom2[],double lx);
-void potencial(double *u,double *vi,struct sys sys,struct sim sim,atomo atom[],int i,int j,struct lj lj);
-void energia_total(double *u,double *vi,struct sys sys,struct sim sim,atomo atom[],struct lj lj);
-void ener_atom(int o,double *uo,double *vio,struct sys sys,struct sim sim,atomo atom[],struct lj lj);
-void pbc(double *x,double *y,double *z,struct box box);
-void mcmove(struct sys sys,atomo atom[],struct sim *sim,struct lj lj,struct move *move);
-void escala(double factor,struct sim *sim,atomo atom[],int dim);
-void mcvol(struct sys *sys,atomo atom1[],atomo atom2[],struct lj lj,struct move *volu);
-double chemPot(int nat,double beta,double vol,double U);
-void creaParti(struct sys sys,struct sim *simA,struct sim *simB,atomo atomA[],atomo atomB[],struct lj lj);
-void screen(int step,struct sys sys,int flag);
-void ajustaDr(struct move *move,struct sys sys,struct sim *sim);
-void ajustaDv(struct move *volu,struct sys *sys);
-void gibbs(struct sys *sys,atomo atom1[],atomo atom2[],struct lj lj,struct move *move1,struct move *move2,struct move *volu);
-
-int samp=1;
 //######### MAIN GEMC ###############
 void main(int argc, char *argv[]){
   char inFile[15]="";
@@ -50,6 +7,7 @@ void main(int argc, char *argv[]){
   struct lj lj;
   struct move move1,move2,volu;
   double u,vi;
+  int samp = 1;
  
   clear(); 
   if(argc < 2 || argc >2){printf("Syntax: ./exe  <run.file>\n");exit(0);}
@@ -74,39 +32,9 @@ void main(int argc, char *argv[]){
   sys.sim1.chemPot = chemPot(sys.sim1.nat,1.0f/sys.temp,sys.sim1.box.x*sys.sim1.box.y*sys.sim1.box.z,sys.sim1.upot/(double)(sys.sim1.nat));
   sys.sim2.chemPot = chemPot(sys.sim2.nat,1.0f/sys.temp,sys.sim2.box.x*sys.sim2.box.y*sys.sim2.box.z,sys.sim2.upot/(double)(sys.sim2.nat));
 
-  gibbs(&sys,atom1,atom2,lj,&move1,&move2,&volu);
+  gibbs(&sys,atom1,atom2,lj,&move1,&move2,&volu,&samp);
 }
 //###################################
-void clear(){
-  system("rm -f *.xyz *txt");
-}
-//******************************************************
-void compBoxAux(int dim,double dens,int nat,double box[]){
-
-  if(dim == 3){
-    box[0] = pow((double)nat/dens,1.0f/3.0f);
-    box[1] = box[0];
-    box[2] = box[0];
-  }
-  else{
-    box[0] = pow((double)nat/dens,1.0f/2.0f);
-    box[1] = box[0];
-  }
-}
-//******************************************************
-void compBox(struct sys *sys){
-  double box[(*sys).dim];
-
-  compBoxAux((*sys).dim, (*sys).sim1.dens, (*sys).sim1.nat, box);
-  (*sys).sim1.box.x = box[0];
-  (*sys).sim1.box.y = box[1];
-  if((*sys).dim == 3)   (*sys).sim1.box.z = box[2];
- 
-  compBoxAux((*sys).dim, (*sys).sim2.dens, (*sys).sim2.nat, box);
-  (*sys).sim2.box.x = box[0];
-  (*sys).sim2.box.y = box[1];
-  if((*sys).dim == 3)   (*sys).sim2.box.z = box[2];
-}
 //****************************************************** READ DATA *
 void readData(char inFile[],struct sys *sys,struct lj *lj){
   FILE *f;
@@ -195,17 +123,6 @@ void makeAtoms(int dim,struct sim sim,atomo atom[]){
   }
 }
 
-//****************************************************** PRINT OUT *
-void printXYZ(char outxyz[],int dim,struct sim sim,atomo atom[]){
-  int i;
-  FILE *f;
-
-  f = fopen(outxyz,"w");
-  fprintf(f,"%d\n\n",sim.nat);
-  for(i=0;i<sim.nat;i++){
-    fprintf(f,"1 %lf %lf %lf\n",atom[i].pos.x, atom[i].pos.y, atom[i].pos.z);
-  }
-}
 //********************************************************* POTENCIAL *
 void potencial(double *u,double *vi,struct sys sys,struct sim sim,atomo atom[],int i,int j,struct lj lj){
   double dx,dy,dz,sig_rij6,rij;
@@ -255,24 +172,6 @@ void ener_atom(int o,double *uo,double *vio,struct sys sys,struct sim sim,atomo 
       *vio += av; //virial
     }
   }
-}
-//************************************** SUPER PRINT *
-void superPrint(int dim,int nat1,int nat2,atomo atom1[],atomo atom2[],double lx){
-  int i,nat;
-  double sepp = 8.0;
-  FILE *f;
-
-  nat = nat1 + nat2;
-
-  f = fopen("super.xyz","a");
-    fprintf(f,"%d\n\n",nat);
-    for(i=0;i<nat1;i++){
-      fprintf(f,"1 %lf %lf %lf\n",atom1[i].pos.x, atom1[i].pos.y, atom1[i].pos.z);
-    }
-    for(i=0;i<nat2;i++){
-      fprintf(f,"2 %lf %lf %lf\n",atom2[i].pos.x+lx+sepp, atom2[i].pos.y, atom2[i].pos.z);
-    }
-  fclose(f);
 }
 //******************************************** PBC *
 void pbc(double *x,double *y,double *z,struct box box){
@@ -440,47 +339,6 @@ void mcvol(struct sys *sys,atomo atom1[],atomo atom2[],struct lj lj,struct move 
   }
   (*volu).intentos++;  
 }
-//*************************************************** ELIGE *
-int elige(int N){
-  double rnd,prob; 
-  int resp;
-
-  rnd = Random();
-  prob = 1.0f/(double)N;
-  resp = (int)(rnd/prob) + 1;
-
-  return resp;
-}
-//******************************************** IMPRIME PANTALLA *
-void screen(int step,struct sys sys,int flag){
-  double mu1,mu2,vol1,vol2,upot1,upot2,press1,press2,dens1,dens2;
-  FILE *f;
-  
-  f = fopen("out.txt","a");
-  switch(flag){
-    case 1:   printf("STEP   \tUPOT1   \tUPOT2   \tDENS1   \tDENS2   \tDR1   \tDR2   \tDV   \tMU1   \tMU2   \tPRESS1   \tPRESS2\n"); break;
-    case 2:   {
-      upot1 = sys.sim1.upot/(double)(sys.sim1.nat);
-      upot2 = sys.sim2.upot/(double)(sys.sim2.nat);
-      vol1  = sys.sim1.box.x*sys.sim1.box.y;
-      if(sys.dim == 3)   vol1 *= sys.sim1.box.z;
-      vol2  = sys.sim2.box.x*sys.sim2.box.y;
-      if(sys.dim == 3)   vol2 *= sys.sim1.box.z;
-      dens1 = (double)(sys.sim1.nat)/vol1;
-      dens2 = (double)(sys.sim2.nat)/vol2;
-      press1 = dens1 * sys.temp + sys.sim1.virial/((double)(sys.dim)*vol1);
-      press2 = dens2 * sys.temp + sys.sim2.virial/((double)(sys.dim)*vol2);
-      mu1 = -log(sys.sim1.chemPot / (double)(samp)) * sys.temp;
-      mu2 = -log(sys.sim2.chemPot / (double)(samp)) * sys.temp;
-
-      //printf("%lf\t%lf\t%lf\t%lf\n",dens1,dens2,mu1,mu2);
-
-      printf("%i\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\n",step,upot1,upot2,dens1,dens2,sys.sim1.dr,sys.sim2.dr,sys.dv,mu1,mu2,press1,press2);
-      fprintf(f,"%i\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\n",step,upot1,upot2,dens1,dens2,mu1,mu2,press1,press2);
-    }; break;
-  }
-  fclose(f);
-}
 //*********************************************** POTENCIAL QUÍMICO *
 double chemPot(int nat,double beta,double vol,double U){
   double mu=0,N;
@@ -491,7 +349,7 @@ double chemPot(int nat,double beta,double vol,double U){
   return mu;
 }
 //********************************************** CREAR PARTÍCULA *
-void creaParti(struct sys sys,struct sim *simA,struct sim *simB,atomo atomA[],atomo atomB[],struct lj lj){
+void creaParti(struct sys sys,struct sim *simA,struct sim *simB,atomo atomA[],atomo atomB[],struct lj lj,int *samp){
   double volA,volB,upnew,vpnew,upDest,vpDest,arg,beta = sys.temp,ax,ay,az;
   int nat,oCrea,oDest,dim = sys.dim,nA,nB,jren;
   double u,vi;
@@ -528,7 +386,7 @@ void creaParti(struct sys sys,struct sim *simA,struct sim *simB,atomo atomA[],at
     //Criterio de aceptación
     arg = upnew - upDest + log( (volB*(double)(nA+1)) / (volA*(double)(nB)) )/beta;
     if(Random() < exp(-arg*beta)){
-	    samp++;
+      *samp++;
       (*simA).upot += upnew;
       (*simB).upot -= upDest;
       (*simA).virial += vpnew;
@@ -557,7 +415,7 @@ void creaParti(struct sys sys,struct sim *simA,struct sim *simB,atomo atomA[],at
   }
 }
 //*************************************************** GIBBS *
-void gibbs(struct sys *sys,atomo atom1[],atomo atom2[],struct lj lj,struct move *move1,struct move *move2,struct move *volu){
+void gibbs(struct sys *sys,atomo atom1[],atomo atom2[],struct lj lj,struct move *move1,struct move *move2,struct move *volu,int *samp){
   int step,caso;
 
   step = 0;
@@ -566,7 +424,7 @@ void gibbs(struct sys *sys,atomo atom1[],atomo atom2[],struct lj lj,struct move 
     caso = elige(5);
     if(step%(*sys).nPrint == 0){
       superPrint((*sys).dim,(*sys).sim1.nat,(*sys).sim2.nat,atom1,atom2,(*sys).sim1.box.x);
-      screen(step,*sys,2);
+      screen(step,*samp,*sys,2);
     }
     if(step%(*sys).nAjusta == 0){
       ajustaDr(move1,*sys,&(*sys).sim1);
@@ -578,8 +436,8 @@ void gibbs(struct sys *sys,atomo atom1[],atomo atom2[],struct lj lj,struct move 
       case 1:   mcmove(*sys,atom1,&((*sys).sim1),lj,move1); break;   
       case 2:   mcmove(*sys,atom2,&((*sys).sim2),lj,move2); break;
       case 3:   mcvol(sys,atom1,atom2,lj,volu); break;
-      case 4:   creaParti(*sys,&((*sys).sim1),&((*sys).sim2),atom1,atom2,lj); break;
-      case 5:   creaParti(*sys,&((*sys).sim2),&((*sys).sim1),atom2,atom1,lj); break;
+      case 4:   creaParti(*sys,&((*sys).sim1),&((*sys).sim2),atom1,atom2,lj,samp); break;
+      case 5:   creaParti(*sys,&((*sys).sim2),&((*sys).sim1),atom2,atom1,lj,samp); break;
     }
     step++;
   }

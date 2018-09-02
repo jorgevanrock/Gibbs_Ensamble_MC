@@ -4,31 +4,32 @@
 void main(int argc, char *argv[]){
   char inFile[15]="";
   struct sys sys;
-  struct lj lj;
+  struct potenciales pot;
   struct move move1,move2,volu;
   double u,vi;
   int samp = 1;
  
   clear(); 
+  cafe();
   if(argc < 2 || argc >2){printf("Syntax: ./exe  <run.file>\n");exit(0);}
   strcpy(inFile,argv[1]);
 
-  readData(inFile, &sys, &lj);
+  readData(inFile, &sys, &pot);
 
   atomo atom1[sys.sim1.nat + sys.sim2.nat], atom2[sys.sim1.nat + sys.sim2.nat];
 
   makeAtoms(sys.dim,sys.sim1,atom1);
   makeAtoms(sys.dim,sys.sim2,atom2);
 
-  init(&u,&vi,atom1,atom2,&move1,&move2,&volu,&sys,lj);
+  init(&u,&vi,atom1,atom2,&move1,&move2,&volu,&sys,pot);
 
-  gibbs(&sys,atom1,atom2,lj,&move1,&move2,&volu,&samp);
+  gibbs(&sys,atom1,atom2,pot,&move1,&move2,&volu,&samp);
 }
 //###################################
 //****************************************************** READ DATA *
-void readData(char inFile[],struct sys *sys,struct lj *lj){
+void readData(char inFile[],struct sys *sys,struct potenciales *pot){
   FILE *f;
-  char name[20];
+  char name[100];
   
   printf("%s\n",inFile);
 
@@ -40,7 +41,7 @@ void readData(char inFile[],struct sys *sys,struct lj *lj){
     fscanf(f,"%lf\t%s\n",&(sys->sim2.dens),name);
     fscanf(f,"%lf\t%s\n",&(sys->rcut),name);
     fscanf(f,"%s\t%s\n",sys->potential,name);
-    fscanf(f,"%lf\t%lf\t%s\n",&(lj->sig),&(lj->eps),name);
+    fscanf(f,"%lf\t%lf\t%s\n",&(pot->lj.sig),&(pot->lj.eps),name);
     fscanf(f,"%lf\t%s\n",&(sys->sim1.dr),name);
     fscanf(f,"%lf\t%s\n",&(sys->dv),name);
     fscanf(f,"%lf\t%s\n",&(sys->temp),name);
@@ -48,6 +49,10 @@ void readData(char inFile[],struct sys *sys,struct lj *lj){
     fscanf(f,"%lf\t%s\n",&(sys->accep),name);
     fscanf(f,"%i\t%s\n",&(sys->nPrint),name);
     fscanf(f,"%i\t%s\n",&(sys->nAjusta),name);
+    fscanf(f,"%s\n",name);
+    fscanf(f,"%lf\t%lf\t%lf\t%lf\t%s\n",&(pot->sgm.sig),&(pot->sgm.lam),&(pot->sgm.eps),&(pot->sgm.m),name);
+    fscanf(f,"%lf\t%lf\t%lf\t%lf\t%s\n",&(pot->sgm.sig1),&(pot->sgm.lam1),&(pot->sgm.eps1),&(pot->sgm.n1),name);
+    fscanf(f,"%lf\t%lf\t%lf\t%lf\t%s\n",&(pot->sgm.sig2),&(pot->sgm.lam2),&(pot->sgm.eps2),&(pot->sgm.n2),name);
   fclose(f);
 
   //Num atomos total
@@ -55,12 +60,14 @@ void readData(char inFile[],struct sys *sys,struct lj *lj){
   (*sys).sim2.dr = (*sys).sim1.dr;
   compBox(sys);
 
+  /*
   printf("nat1: %i  nat2: %i\n",(*sys).sim1.nat,(*sys).sim2.nat);
   printf("rho1: %lf rho2: %lf\n",(*sys).sim1.dens,(*sys).sim2.dens);
   printf("lx1: %lf ly1: %lf  lz1: %lf\n",(*sys).sim1.box.x,(*sys).sim1.box.y,(*sys).sim1.box.z);
   printf("lx2: %lf ly2: %lf  lz2: %lf\n",(*sys).sim2.box.x,(*sys).sim2.box.y,(*sys).sim2.box.z);
   printf("potencial: %s\n",(*sys).potential);
   printf("epsilon: %lf  sigma: %lf\n",(*lj).eps,(*lj).sig);
+  */
 
 }
 //*************************************************** MINIMA IMAGEN *
@@ -102,7 +109,7 @@ void makeAtoms(int dim,struct sim sim,atomo atom[]){
   while(nparti < sim.nat){
     xo = Random() * sim.box.x;
     yo = Random() * sim.box.y;
-    if(dim == 3)   zo = Random() * sim.box.z;
+    if(dim == 3)       zo = Random() * sim.box.z;
     else               zo = 0.0f;
     if(traslape(dim,sim,atom,nparti,xo,yo,zo) == NO){
       atom[nparti].pos.x = xo;
@@ -123,8 +130,8 @@ double chemPot(int nat,double beta,double vol,double U){
 }
 
 //********************************************************* POTENCIAL *
-void potencial(double *u,double *vi,struct sys sys,struct sim sim,atomo atom[],int i,int j,struct lj lj){
-  double dx,dy,dz,sig_rij6,rij;
+void potencial(double *u,double *vi,struct sys sys,struct sim sim,atomo atom[],int i,int j,struct potenciales pot){
+  double dx,dy,dz,sig_rij6,rij,att1,att2,rep,f1,f2,f3,fza;
   *u = 0.0f;  *vi = 0.0f;
 
   dx = atom[i].pos.x - atom[j].pos.x;
@@ -135,15 +142,32 @@ void potencial(double *u,double *vi,struct sys sys,struct sim sim,atomo atom[],i
   rij = sqrt(dx*dx + dy*dy + dz*dz);
 
   if(rij <= sys.rcut){
-    if(strcmp(sys.potential,"lj") == 0){
-      sig_rij6 = pow((lj.sig/rij),6.0f);
-      *u = 4.0f * lj.eps * sig_rij6 * (sig_rij6 - 1.0f); //energy
-      *vi = 24.0f * lj.eps * sig_rij6 * (2.0f * sig_rij6 - 1.0f); //virial
+    if(strcmp(sys.potential,"lj") == 0){ 
+      sig_rij6 = pow((pot.lj.sig/rij),6.0f);
+      *u = 4.0f * pot.lj.eps * sig_rij6 * (sig_rij6 - 1.0f); //energy
+      *vi = 24.0f * pot.lj.eps * sig_rij6 * (2.0f * sig_rij6 - 1.0f); //virial
+    }
+    else if(strcmp(sys.potential,"sgm") == 0){
+      f1 = pot.sgm.m * pot.sgm.eps * pow(pot.sgm.lam/(rij - pot.sgm.sig + pot.sgm.lam),pot.sgm.m + 1.0f) / pot.sgm.lam;
+      f2 = 0.25f * pot.sgm.eps1 * pot.sgm.n1 * pow(Sech(0.5f*pot.sgm.n1*(-rij+pot.sgm.lam1+pot.sgm.sig1)/pot.sgm.lam1),2.0f) / pot.sgm.lam1;
+      f3 = 0.25f * pot.sgm.eps2 * pot.sgm.n2 * pow(Sech(0.5f*pot.sgm.n2*(-rij+pot.sgm.lam2+pot.sgm.sig2)/pot.sgm.lam2),2.0f) / pot.sgm.lam2;
+      fza = f1 - f2 - f3;
+      if(rij < 0.85f){
+        fza = 4.0f * pow(10.0f,400.0f);
+	*u  = pow(10.0f,400.0f);
+      }
+      else{
+        rep = pot.sgm.eps * pow(pot.sgm.lam/(rij - pot.sgm.sig + pot.sgm.lam),pot.sgm.m);
+        att1 = pot.sgm.eps1 / (1.0f + exp(pot.sgm.n1 * (rij - pot.sgm.lam1 - pot.sgm.sig1) / pot.sgm.lam1));
+        att2 = pot.sgm.eps2 / (1.0f + exp(pot.sgm.n2 * (rij - pot.sgm.lam2 - pot.sgm.sig2) / pot.sgm.lam2));
+        *u = rep - att1 - att2; //energy	 
+      }
+      *vi = -0.5f * fza * rij; //virial
     }
   }
 }
 //****************************************************** ENERGÍA TOTAL *
-void energia_total(double *u,double *vi,struct sys sys,struct sim sim,atomo atom[],struct lj lj){
+void energia_total(double *u,double *vi,struct sys sys,struct sim sim,atomo atom[],struct potenciales pot){
   int i,j;
   double au,av;
   
@@ -151,14 +175,14 @@ void energia_total(double *u,double *vi,struct sys sys,struct sim sim,atomo atom
 
   for(i=0;i<sim.nat-1;i++){
     for(j=i+1;j<sim.nat;j++){
-      potencial(&au,&av,sys,sim,atom,i,j,lj);
+      potencial(&au,&av,sys,sim,atom,i,j,pot);
       *u += au; //energy
       *vi += av; //virial
     }
   }
 }
 //****************************************************** ENERGÍA POR ÁTOMO *
-void ener_atom(int o,double *uo,double *vio,struct sys sys,struct sim sim,atomo atom[],struct lj lj){
+void ener_atom(int o,double *uo,double *vio,struct sys sys,struct sim sim,atomo atom[],struct potenciales pot){
   int j;
   double au,av;
 
@@ -166,14 +190,14 @@ void ener_atom(int o,double *uo,double *vio,struct sys sys,struct sim sim,atomo 
 
   for(j=0;j<sim.nat;j++){
     if(j != o){
-      potencial(&au,&av,sys,sim,atom,o,j,lj);
+      potencial(&au,&av,sys,sim,atom,o,j,pot);
       *uo  += au; //energy
       *vio += av; //virial
     }
   }
 }
 //*********************************************************** INICIALIZACIÓN *
-void init(double *u,double *vi,atomo atom1[],atomo atom2[],struct move *move1,struct move *move2,struct move *volu,struct sys *sys,struct lj lj){
+void init(double *u,double *vi,atomo atom1[],atomo atom2[],struct move *move1,struct move *move2,struct move *volu,struct sys *sys,struct potenciales pot){
   int nat1 = (*sys).sim1.nat, nat2 = (*sys).sim2.nat;
   double vol1 = sys->sim1.box.x*sys->sim1.box.y*sys->sim1.box.z, vol2 = sys->sim2.box.x*sys->sim2.box.y*sys->sim2.box.z, beta = 1.0f/sys->temp,u1 = sys->sim1.upot, u2 = sys->sim2.upot;
 
@@ -184,10 +208,10 @@ void init(double *u,double *vi,atomo atom1[],atomo atom2[],struct move *move1,st
   (*sys).sim1.chemPot = chemPot(nat1,beta,vol1,u1/(double)(nat1));
   (*sys).sim2.chemPot = chemPot(nat2,beta,vol2,u2/(double)(nat2));
 
-  energia_total(u,vi,*sys,sys->sim1,atom1,lj);
+  energia_total(u,vi,*sys,sys->sim1,atom1,pot);
   (*sys).sim1.upot = *u;   (*sys).sim1.virial = *vi;
 
-  energia_total(u,vi,*sys,sys->sim2,atom2,lj);
+  energia_total(u,vi,*sys,sys->sim2,atom2,pot);
   (*sys).sim2.upot = *u;   (*sys).sim2.virial = *vi;
 }
 //******************************************** PBC *
@@ -200,20 +224,20 @@ void pbc(double *x,double *y,double *z,struct box box){
   else if(*z <0.0f)      *z += box.z;
 }
 //******************************************* MC MOVE *
-void mcmove(struct sys sys,atomo atom[],struct sim *sim,struct lj lj,struct move *move){
+void mcmove(struct sys sys,atomo atom[],struct sim *sim,struct potenciales pot,struct move *move){
   int o;
   double xold,yold,zold,ener_old,ener_new,vir_old,vir_new,dE,dVir,beta;
-  int N = sim->nat,mueve=0;
+  int mueve=0, N = 1;
   double u,vi;
 
   while(mueve < N){
-    o = rand()%(*sim).nat; 
+    o = Random() * (*sim).nat; 
   
     xold = atom[o].pos.x;
     yold = atom[o].pos.y;
     if(sys.dim == 3)   zold = atom[o].pos.z;
   
-    ener_atom(o,&u,&vi,sys,*sim,atom,lj);
+    ener_atom(o,&u,&vi,sys,*sim,atom,pot);
     ener_old = u;
     vir_old  = vi;
   
@@ -223,7 +247,7 @@ void mcmove(struct sys sys,atomo atom[],struct sim *sim,struct lj lj,struct move
   
     pbc(&(atom[o].pos.x), &(atom[o].pos.y), &(atom[o].pos.z),(*sim).box );
   
-    ener_atom(o,&u,&vi,sys,*sim,atom,lj);
+    ener_atom(o,&u,&vi,sys,*sim,atom,pot);
     ener_new = u;
     vir_new  = vi;
 
@@ -280,7 +304,7 @@ void escala(double factor,struct sim *sim,atomo atom[],int dim){
 
   (*sim).box.y = (*sim).box.x;
   if(dim == 3)   (*sim).box.z = (*sim).box.x;
-  else           (*sim).box.z = 0.0f;
+  else           (*sim).box.z = 1.0f;
 
   for(i=0;i < (*sim).nat; i++){
      atom[i].pos.x *= factor;
@@ -290,7 +314,7 @@ void escala(double factor,struct sim *sim,atomo atom[],int dim){
   }
 }
 //*************************************************** MC VOLUME *
-void mcvol(struct sys *sys,atomo atom1[],atomo atom2[],struct lj lj,struct move *volu){
+void mcvol(struct sys *sys,atomo atom1[],atomo atom2[],struct potenciales pot,struct move *volu){
   double vol1,vol2,volT,lnVol,vol1new,vol2new,fac1,fac2;
   double utn1,utn2,vtn1,vtn2,dE1,dE2,arg1,arg2,arg,dv1,dv2;
   int dim = (*sys).dim;
@@ -306,12 +330,12 @@ void mcvol(struct sys *sys,atomo atom1[],atomo atom2[],struct lj lj,struct move 
   lnVol = log(vol1/vol2) + (2.0f*Random() - 1.0f)*(*sys).dv;
 
   vol1new = volT * exp(lnVol) / (exp(lnVol) + 1.0f);
-  if(dim == 3)   (*sys).sim1.box.x = pow(vol1new,1.0f/3.0f);
+  if(dim == 3)          (*sys).sim1.box.x = pow(vol1new,1.0f/3.0f);
   else                  (*sys).sim1.box.x = pow(vol1new,1.0f/2.0f);
-  if(dim == 3)   fac1 = (*sys).sim1.box.x / pow(vol1,1.0f/3.0f);
+  if(dim == 3)          fac1 = (*sys).sim1.box.x / pow(vol1,1.0f/3.0f);
   else                  fac1 = (*sys).sim1.box.x / pow(vol1,1.0f/2.0f);
   escala(fac1,&(*sys).sim1,atom1,dim);
-  energia_total(&u,&vi,*sys,(*sys).sim1,atom1,lj);
+  energia_total(&u,&vi,*sys,(*sys).sim1,atom1,pot);
   utn1 = u;
   vtn1 = vi;
 
@@ -321,7 +345,7 @@ void mcvol(struct sys *sys,atomo atom1[],atomo atom2[],struct lj lj,struct move 
   if(dim == 3)   fac2 = (*sys).sim2.box.x / pow(vol2,1.0f/3.0f);
   else           fac2 = (*sys).sim2.box.x / pow(vol2,1.0f/2.0f);
   escala(fac2,&(*sys).sim2,atom2,dim);
-  energia_total(&u,&vi,*sys,(*sys).sim2,atom2,lj);
+  energia_total(&u,&vi,*sys,(*sys).sim2,atom2,pot);
   utn2 = u;
   vtn2 = vi;  
 
@@ -357,11 +381,11 @@ void mcvol(struct sys *sys,atomo atom1[],atomo atom2[],struct lj lj,struct move 
   (*volu).intentos++;  
 }
 //********************************************** CREAR PARTÍCULA *
-void creaParti(struct sys sys,struct sim *simA,struct sim *simB,atomo atomA[],atomo atomB[],struct lj lj,int *samp){
+void creaParti(struct sys sys,struct sim *simA,struct sim *simB,atomo atomA[],atomo atomB[],struct potenciales pot,int *samp){
   double volA,volB,upnew,vpnew,upDest,vpDest,arg,beta = sys.temp,ax,ay,az;
   int nat,oCrea,oDest,dim = sys.dim,nA,nB,jren;
   double u,vi;
-  int swap=0,Nswap=100;
+  int swap=0,Nswap=1;
 
   while(swap < Nswap  &&  (*simB).nat != 0){
     nat = (*simA).nat + (*simB).nat;
@@ -376,7 +400,7 @@ void creaParti(struct sys sys,struct sim *simA,struct sim *simB,atomo atomA[],at
     else           atomA[oCrea].pos.z = 0.0f;
 
     (*simA).nat += 1;
-    ener_atom(oCrea,&u,&vi,sys,*simA,atomA,lj);
+    ener_atom(oCrea,&u,&vi,sys,*simA,atomA,pot);
     upnew = u;
     vpnew = vi;   
 
@@ -386,8 +410,8 @@ void creaParti(struct sys sys,struct sim *simA,struct sim *simB,atomo atomA[],at
     volB = (*simB).box.x * (*simB).box.y;
     if(dim == 3)   volB *= (*simB).box.z;
   
-    oDest = (int)(rand() % nB);
-    ener_atom(oDest,&u,&vi,sys,*simB,atomB,lj);
+    oDest = (int)(Random() * nB);
+    ener_atom(oDest,&u,&vi,sys,*simB,atomB,pot);
     upDest = u;  
     vpDest = vi;  
 
@@ -423,13 +447,13 @@ void creaParti(struct sys sys,struct sim *simA,struct sim *simB,atomo atomA[],at
   }
 }
 //*************************************************** GIBBS *
-void gibbs(struct sys *sys,atomo atom1[],atomo atom2[],struct lj lj,struct move *move1,struct move *move2,struct move *volu,int *samp){
+void gibbs(struct sys *sys,atomo atom1[],atomo atom2[],struct potenciales pot,struct move *move1,struct move *move2,struct move *volu,int *samp){
   int step,caso;
 
   step = 0;
-
+  screen(step,*samp,*sys,1);
   while(step <= (*sys).mcStep){
-    caso = elige(5);
+    caso = elige(3);
     if(step%(*sys).nPrint == 0){
       superPrint((*sys).dim,(*sys).sim1.nat,(*sys).sim2.nat,atom1,atom2,(*sys).sim1.box.x);
       screen(step,*samp,*sys,2);
@@ -441,11 +465,15 @@ void gibbs(struct sys *sys,atomo atom1[],atomo atom2[],struct lj lj,struct move 
     }
 
     switch(caso){
-      case 1:   mcmove(*sys,atom1,&((*sys).sim1),lj,move1); break;   
-      case 2:   mcmove(*sys,atom2,&((*sys).sim2),lj,move2); break;
-      case 3:   mcvol(sys,atom1,atom2,lj,volu); break;
-      case 4:   creaParti(*sys,&((*sys).sim1),&((*sys).sim2),atom1,atom2,lj,samp); break;
-      case 5:   creaParti(*sys,&((*sys).sim2),&((*sys).sim1),atom2,atom1,lj,samp); break;
+      case 1: {
+        if(elige(2) == 1)   mcmove(*sys,atom1,&((*sys).sim1),pot,move1);
+        else                mcmove(*sys,atom2,&((*sys).sim2),pot,move2);
+      }; break;
+      case 2:   mcvol(sys,atom1,atom2,pot,volu); break;
+      case 3: {
+        if(elige(2) == 1)   creaParti(*sys,&((*sys).sim1),&((*sys).sim2),atom1,atom2,pot,samp);
+        else                creaParti(*sys,&((*sys).sim2),&((*sys).sim1),atom2,atom1,pot,samp);
+      }; break;
     }
     step++;
   }

@@ -3,6 +3,19 @@ void clear(){
   system("rm -f *.xyz *txt");
 }
 //******************************************************
+void cafe(){
+
+  printf("╔═════════════════════════════════════════════════════╗\n");
+  printf("║     ( (                                             ║\n");
+  printf("║      ) )                                            ║\n");
+  printf("║  ...........          GIBBS ENSAMBLE                ║\n");
+  printf("║  |         |]           MONTE CARLO                 ║\n");
+  printf("║   \\       /                                         ║\n");
+  printf("║    `-----´                                          ║\n");
+  printf("╚═════════════════════════════════════════════════════╝\n\n");
+
+}
+//******************************************************
 void compBoxAux(int dim,double dens,int nat,double box[]){
 
   if(dim == 3){
@@ -13,21 +26,22 @@ void compBoxAux(int dim,double dens,int nat,double box[]){
   else{
     box[0] = pow((double)nat/dens,1.0f/2.0f);
     box[1] = box[0];
+    box[2] = 1.0f;
   }
 }
 //******************************************************
 void compBox(struct sys *sys){
-  double box[(*sys).dim];
+  double box[3];
 
   compBoxAux((*sys).dim, (*sys).sim1.dens, (*sys).sim1.nat, box);
   (*sys).sim1.box.x = box[0];
   (*sys).sim1.box.y = box[1];
-  if((*sys).dim == 3)   (*sys).sim1.box.z = box[2];
+  (*sys).sim1.box.z = box[2];
  
   compBoxAux((*sys).dim, (*sys).sim2.dens, (*sys).sim2.nat, box);
   (*sys).sim2.box.x = box[0];
   (*sys).sim2.box.y = box[1];
-  if((*sys).dim == 3)   (*sys).sim2.box.z = box[2];
+  (*sys).sim2.box.z = box[2];
 }
 //*************************************************** ELIGE *
 int elige(int N){
@@ -43,11 +57,12 @@ int elige(int N){
 //******************************************** IMPRIME PANTALLA *
 void screen(int step,int samp,struct sys sys,int flag){
   double mu1,mu2,vol1,vol2,upot1,upot2,press1,press2,dens1,dens2;
+  int Neq = (int)(sys.mcStep/2.0f);
   FILE *f;
   
   f = fopen("out.txt","a");
   switch(flag){
-    case 1:   printf("STEP   \tUPOT1   \tUPOT2   \tDENS1   \tDENS2   \tDR1   \tDR2   \tDV   \tMU1   \tMU2   \tPRESS1   \tPRESS2\n"); break;
+    case 1:   printf("STEP   \tUPOT1   \tUPOT2   \tDENS1   \tDENS2   \tMU1     \tMU2     \tPRESS1   \tPRESS2\n"); break;
     case 2:   {
       upot1 = sys.sim1.upot/(double)(sys.sim1.nat);
       upot2 = sys.sim2.upot/(double)(sys.sim2.nat);
@@ -64,8 +79,11 @@ void screen(int step,int samp,struct sys sys,int flag){
 
       //printf("%lf\t%lf\t%lf\t%lf\n",dens1,dens2,mu1,mu2);
 
-      printf("%i\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\n",step,upot1,upot2,dens1,dens2,sys.sim1.dr,sys.sim2.dr,sys.dv,mu1,mu2,press1,press2);
-      fprintf(f,"%i\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\n",step,upot1,upot2,dens1,dens2,mu1,mu2,press1,press2);
+      printf("%i\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\n",step,upot1,upot2,dens1,dens2,mu1,mu2,press1,press2);
+//printf("lz1: %lf\tlz2: %lf\n",sys.sim1.box.z,sys.sim2.box.z);
+      if(step >= Neq){
+        fprintf(f,"%i\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\n",step,upot1,upot2,dens1,dens2,mu1,mu2,press1,press2);
+      }
     }; break;
   }
   fclose(f);
@@ -98,4 +116,10 @@ void printXYZ(char outxyz[],int dim,struct sim sim,atomo atom[]){
   for(i=0;i<sim.nat;i++){
     fprintf(f,"1 %lf %lf %lf\n",atom[i].pos.x, atom[i].pos.y, atom[i].pos.z);
   }
+}
+//**********************************************************
+double Sech(double x){
+  double secantHip;
+  secantHip = 1.0f / cosh(x);
+  return secantHip;
 }

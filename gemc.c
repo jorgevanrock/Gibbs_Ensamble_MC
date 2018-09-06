@@ -227,47 +227,43 @@ void pbc(double *x,double *y,double *z,struct box box){
 void mcmove(struct sys sys,atomo atom[],struct sim *sim,struct potenciales pot,struct move *move){
   int o;
   double xold,yold,zold,ener_old,ener_new,vir_old,vir_new,dE,dVir,beta;
-  int mueve=0, N = 1;
   double u,vi;
 
-  while(mueve < N){
-    o = Random() * (*sim).nat; 
-  
-    xold = atom[o].pos.x;
-    yold = atom[o].pos.y;
-    if(sys.dim == 3)   zold = atom[o].pos.z;
-  
-    ener_atom(o,&u,&vi,sys,*sim,atom,pot);
-    ener_old = u;
-    vir_old  = vi;
-  
-    atom[o].pos.x += (2.0f*Random() - 1.0f)*((*sim).dr); 
-    atom[o].pos.y += (2.0f*Random() - 1.0f)*((*sim).dr); 
-    if(sys.dim == 3)   atom[o].pos.z += (2.0f*Random() - 1.0f)*((*sim).dr); 
-  
-    pbc(&(atom[o].pos.x), &(atom[o].pos.y), &(atom[o].pos.z),(*sim).box );
-  
-    ener_atom(o,&u,&vi,sys,*sim,atom,pot);
-    ener_new = u;
-    vir_new  = vi;
+  o = Random() * (*sim).nat; 
 
-    dE = ener_new - ener_old;
-    dVir = vir_new - vir_old; 
-    //metropolis
-    beta = 1.0f/sys.temp;
-    if( dE < 0.0f  ||  Random() < exp(-beta*dE) ){
-      (*sim).upot += dE;
-      (*sim).virial += dVir;
-      (*move).accep++;  
-    }
-    else{
-      atom[o].pos.x = xold; 
-      atom[o].pos.y = yold; 
-      if(sys.dim == 3)   atom[o].pos.z = zold; 
-    }
-    (*move).intentos++;
-    mueve++;
+  xold = atom[o].pos.x;
+  yold = atom[o].pos.y;
+  if(sys.dim == 3)   zold = atom[o].pos.z;
+
+  ener_atom(o,&u,&vi,sys,*sim,atom,pot);
+  ener_old = u;
+  vir_old  = vi;
+
+  atom[o].pos.x += (2.0f*Random() - 1.0f)*((*sim).dr); 
+  atom[o].pos.y += (2.0f*Random() - 1.0f)*((*sim).dr); 
+  if(sys.dim == 3)   atom[o].pos.z += (2.0f*Random() - 1.0f)*((*sim).dr); 
+
+  pbc(&(atom[o].pos.x), &(atom[o].pos.y), &(atom[o].pos.z),(*sim).box );
+
+  ener_atom(o,&u,&vi,sys,*sim,atom,pot);
+  ener_new = u;
+  vir_new  = vi;
+
+  dE = ener_new - ener_old;
+  dVir = vir_new - vir_old; 
+  //metropolis
+  beta = 1.0f/sys.temp;
+  if( dE < 0.0f  ||  Random() < exp(-beta*dE) ){
+    (*sim).upot += dE;
+    (*sim).virial += dVir;
+    (*move).accep++;  
   }
+  else{
+    atom[o].pos.x = xold; 
+    atom[o].pos.y = yold; 
+    if(sys.dim == 3)   atom[o].pos.z = zold; 
+  }
+  (*move).intentos++;
 }
 //********************************************* AJUSTA DR *
 void ajustaDr(struct move *move,struct sys sys,struct sim *sim){
@@ -359,7 +355,7 @@ void mcvol(struct sys *sys,atomo atom1[],atomo atom2[],struct potenciales pot,st
   arg2 = dE2 - dv2;
 
   arg = arg1 + arg2;
-  if(Random() < exp(-arg*beta)){
+  if(arg < 0.0f  ||  Random() < exp(-arg*beta)){
     vol1 = vol1new;
     vol2 = vol2new;
     (*sys).sim1.upot = utn1;
@@ -385,9 +381,8 @@ void creaParti(struct sys sys,struct sim *simA,struct sim *simB,atomo atomA[],at
   double volA,volB,upnew,vpnew,upDest,vpDest,arg,beta = sys.temp,ax,ay,az;
   int nat,oCrea,oDest,dim = sys.dim,nA,nB,jren;
   double u,vi;
-  int swap=0,Nswap=1;
 
-  while(swap < Nswap  &&  (*simB).nat != 0){
+  if((*simB).nat != 0){
     nat = (*simA).nat + (*simB).nat;
     nA = (*simA).nat;
     volA = (*simA).box.x * (*simA).box.y;
@@ -417,7 +412,7 @@ void creaParti(struct sys sys,struct sim *simA,struct sim *simB,atomo atomA[],at
 
     //Criterio de aceptación
     arg = upnew - upDest + log( (volB*(double)(nA+1)) / (volA*(double)(nB)) )/beta;
-    if(Random() < exp(-arg*beta)){
+    if(arg < 0.0f  ||  Random() < exp(-arg*beta)){
       *samp++;
       (*simA).upot += upnew;
       (*simB).upot -= upDest;
@@ -443,17 +438,22 @@ void creaParti(struct sys sys,struct sim *simA,struct sim *simB,atomo atomA[],at
       atomA[(*simA).nat].pos.z = 0.0f;
       (*simA).nat -= 1;
     }
-    swap++;
   }
 }
 //*************************************************** GIBBS *
 void gibbs(struct sys *sys,atomo atom1[],atomo atom2[],struct potenciales pot,struct move *move1,struct move *move2,struct move *volu,int *samp){
-  int step,caso;
 
-  step = 0;
+  double rnd;
+  int step = 0,caso;
+  int Nswap = 64, Nvol = 15, Nmove = 512;
+
   screen(step,*samp,*sys,1);
   while(step <= (*sys).mcStep){
-    caso = elige(3);
+    rnd = Random() * (double)(Nmove + Nvol + Nswap);
+    if(rnd <= Nmove)             caso = 1;
+    else if(rnd <= Nmove+Nvol)   caso = 2;
+    else                         caso = 3;
+
     if(step%(*sys).nPrint == 0){
       superPrint((*sys).dim,(*sys).sim1.nat,(*sys).sim2.nat,atom1,atom2,(*sys).sim1.box.x);
       screen(step,*samp,*sys,2);

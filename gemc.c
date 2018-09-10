@@ -53,6 +53,8 @@ void readData(char inFile[],struct sys *sys,struct potenciales *pot){
     fscanf(f,"%lf\t%lf\t%lf\t%lf\t%s\n",&(pot->sgm.sig),&(pot->sgm.lam),&(pot->sgm.eps),&(pot->sgm.m),name);
     fscanf(f,"%lf\t%lf\t%lf\t%lf\t%s\n",&(pot->sgm.sig1),&(pot->sgm.lam1),&(pot->sgm.eps1),&(pot->sgm.n1),name);
     fscanf(f,"%lf\t%lf\t%lf\t%lf\t%s\n",&(pot->sgm.sig2),&(pot->sgm.lam2),&(pot->sgm.eps2),&(pot->sgm.n2),name);
+    fscanf(f,"%s\n",name);
+    fscanf(f,"%lf\t%lf\t%lf\t%s\n",&(pot->sw.sig),&(pot->sw.lam),&(pot->sw.eps),name);
   fclose(f);
 
   //Num atomos total
@@ -164,6 +166,12 @@ void potencial(double *u,double *vi,struct sys sys,struct sim sim,atomo atom[],i
       }
       *vi = -0.5f * fza * rij; //virial
     }
+    else if(strcmp(sys.potential,"sw") == 0){
+      if(rij < pot.sw.sig)                    *u = pow(10.0f,500.0f); //infinita
+      else if(rij <= pot.sw.lam*pot.sw.sig)   *u = pot.sw.eps;
+      else                                    *u = 0.0f;
+      *vi = 0.0f;
+    }
   }
 }
 //****************************************************** ENERGÍA TOTAL *
@@ -229,6 +237,8 @@ void mcmove(struct sys sys,atomo atom[],struct sim *sim,struct potenciales pot,s
   double xold,yold,zold,ener_old,ener_new,vir_old,vir_new,dE,dVir,beta;
   double u,vi;
 
+//int mm=0,Nmm=512;
+//while(mm<Nmm){
   o = Random() * (*sim).nat; 
 
   xold = atom[o].pos.x;
@@ -264,6 +274,8 @@ void mcmove(struct sys sys,atomo atom[],struct sim *sim,struct potenciales pot,s
     if(sys.dim == 3)   atom[o].pos.z = zold; 
   }
   (*move).intentos++;
+//mm++;
+//}
 }
 //********************************************* AJUSTA DR *
 void ajustaDr(struct move *move,struct sys sys,struct sim *sim){
@@ -382,6 +394,8 @@ void creaParti(struct sys sys,struct sim *simA,struct sim *simB,atomo atomA[],at
   int nat,oCrea,oDest,dim = sys.dim,nA,nB,jren;
   double u,vi;
 
+//int ss=0,Nss=30;
+//while(ss<Nss){
   if((*simB).nat != 0){
     nat = (*simA).nat + (*simB).nat;
     nA = (*simA).nat;
@@ -439,16 +453,21 @@ void creaParti(struct sys sys,struct sim *simA,struct sim *simB,atomo atomA[],at
       (*simA).nat -= 1;
     }
   }
+//ss++;
+//}
 }
 //*************************************************** GIBBS *
 void gibbs(struct sys *sys,atomo atom1[],atomo atom2[],struct potenciales pot,struct move *move1,struct move *move2,struct move *volu,int *samp){
 
   double rnd;
   int step = 0,caso;
-  int Nswap = 64, Nvol = 15, Nmove = 512;
+  int Nswap = 50, Nvol = 15, Nmove = 512;
 
   screen(step,*samp,*sys,1);
   while(step <= (*sys).mcStep){
+
+    if((*sys).sim1.box.x/2.0<=(*sys).rcut || (*sys).sim2.box.x/2.0<=(*sys).rcut){printf("ERROR EN RCUT\n");exit(0);};
+
     rnd = Random() * (double)(Nmove + Nvol + Nswap);
     if(rnd <= Nmove)             caso = 1;
     else if(rnd <= Nmove+Nvol)   caso = 2;

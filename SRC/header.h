@@ -15,7 +15,7 @@
 //**************************************************** STRUCTS *
 struct box{double x;double y;double z;};
 struct sim{int nat;double dens;double upot;double chemPot;double virial;struct box box;double dr;};
-struct sys{int nat;double dens;double mcStep;int nAjusta;int nPrint;double accep;double rcut;double temp;double dv;int dim;char potential[5];struct sim sim1,sim2;struct box box;};
+struct sys{int nat;double dens;double mcStep;int opt;int nAjusta;int nPrint;double accep;double rcut;double temp;double dv;int dim;char potential[5];struct sim sim1,sim2;struct box box;};
 struct lj{double sig;double eps;};
 struct sw{double sig;double lam;double eps;};
 struct sigmoid{double sig;double lam;double eps;double m;double sig1;double lam1;double eps1;double n1;double sig2;double lam2;double eps2;double n2;};
@@ -34,10 +34,12 @@ int elige(int N);
 void screen(int step,int samp,struct sys sys,int flag);
 void superPrint(int dim,int nat1,int nat2,atomo atom1[],atomo atom2[],double lx);
 void printXYZ(char outxyz[],int dim,struct sim sim,atomo atom[]);
+void writeData(struct sys sys,atomo atom1[],atomo atom2[]);
 void readData(char inFile[],struct sys *sys,struct potenciales *pot);
 void minima(int dim,struct box box,double *dx,double *dy,double *dz);
 int traslape(int dim,struct sim sim,atomo atom[],int atoms,double xo,double yo,double zo);
 void makeAtoms(int dim,struct sim sim,atomo atom[]);
+void readConfig(struct sys *sys,atomo atom1[],atomo atom2[]);
 double chemPot(int nat,double beta,double vol,double U);
 void potencial(double *u,double *vi,struct sys sys,struct sim sim,atomo atom[],int i,int j,struct potenciales pot);
 void energia_total(double *u,double *vi,struct sys sys,struct sim sim,atomo atom[],struct potenciales pot);

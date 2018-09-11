@@ -64,12 +64,13 @@ void screen(int step,int samp,struct sys sys,int flag){
   switch(flag){
     case 1:   printf("STEP   \tUPOT1   \tUPOT2   \tDENS1   \tDENS2   \tMU1     \tMU2     \tPRESS1   \tPRESS2\n"); break;
     case 2:   {
-      upot1 = sys.sim1.upot/(double)(sys.sim1.nat);
-      upot2 = sys.sim2.upot/(double)(sys.sim2.nat);
-      vol1  = sys.sim1.box.x*sys.sim1.box.y;
-      if(sys.dim == 3)   vol1 *= sys.sim1.box.z;
-      vol2  = sys.sim2.box.x*sys.sim2.box.y;
-      if(sys.dim == 3)   vol2 *= sys.sim1.box.z;
+      if(sys.sim1.nat == 0)   upot1 = 0.0f;
+      else                    upot1 = sys.sim1.upot/(double)(sys.sim1.nat);
+
+      if(sys.sim2.nat == 0)   upot2 = 0.0f;
+      else                    upot2 = sys.sim2.upot/(double)(sys.sim2.nat);
+      vol1  = sys.sim1.box.x * sys.sim1.box.y * sys.sim1.box.z;
+      vol2  = sys.sim2.box.x * sys.sim2.box.y * sys.sim2.box.z;
       dens1 = (double)(sys.sim1.nat)/vol1;
       dens2 = (double)(sys.sim2.nat)/vol2;
       press1 = dens1 * sys.temp + sys.sim1.virial/((double)(sys.dim)*vol1);
@@ -118,8 +119,48 @@ void printXYZ(char outxyz[],int dim,struct sim sim,atomo atom[]){
   }
 }
 //**********************************************************
+void writeData(struct sys sys,atomo atom1[],atomo atom2[]){
+  FILE *f;
+  int i=0,j=0;
+
+  f = fopen("in.data","w");
+    fprintf(f,"%i\t%lf\t%lf\n",sys.sim1.nat,sys.sim1.box.x,sys.sim1.dr);
+    fprintf(f,"%i\t%lf\t%lf\t%lf\n",sys.sim2.nat,sys.sim2.box.x,sys.sim2.dr,sys.dv);
+    while(i<sys.sim1.nat){  fprintf(f,"%lf\t%lf\t%lf\n",atom1[i].pos.x,atom1[i].pos.y,atom1[i].pos.z); i++; }
+    while(j<sys.sim2.nat){  fprintf(f,"%lf\t%lf\t%lf\n",atom2[j].pos.x,atom2[j].pos.y,atom2[j].pos.z); j++; }
+  fclose(f);
+}
+//**********************************************************
 double Sech(double x){
   double secantHip;
   secantHip = 1.0f / cosh(x);
   return secantHip;
+}
+//**********************************************************
+void readConfig(struct sys *sys,atomo atom1[],atomo atom2[]){
+  FILE *f;
+  int i=0,j=0;
+
+  f = fopen("in.data","r");
+    fscanf(f,"%i\t%lf\t%lf\n",&((*sys).sim1.nat),&((*sys).sim1.box.x),&((*sys).sim1.dr));
+    fscanf(f,"%i\t%lf\t%lf\t%lf\n",&((*sys).sim2.nat),&((*sys).sim2.box.x),&((*sys).sim2.dr),&((*sys).dv));
+    while(i<sys->sim1.nat){ fscanf(f,"%lf\t%lf\t%lf\n",&atom1[i].pos.x,&atom1[i].pos.y,&atom1[i].pos.z); i++; }
+    while(j<sys->sim2.nat){ fscanf(f,"%lf\t%lf\t%lf\n",&atom2[j].pos.x,&atom2[j].pos.y,&atom2[j].pos.z); j++; }
+  fclose(f);
+
+  (*sys).sim1.box.y = sys->sim1.box.x;
+  (*sys).sim2.box.y = sys->sim2.box.x;
+  if(sys->dim == 3){
+    (*sys).sim2.box.z = sys->sim2.box.x;
+    (*sys).sim1.box.z = sys->sim1.box.x;
+  }
+  else{
+    (*sys).sim2.box.z = 1.0f;
+    (*sys).sim1.box.z = 1.0f;
+  }
+  double vol1 = sys->sim1.box.x * sys->sim1.box.y * sys->sim1.box.z;
+  (*sys).sim1.dens = (double)(sys->sim1.nat) / vol1;
+  double vol2 = sys->sim2.box.x * sys->sim2.box.y * sys->sim2.box.z;
+  (*sys).sim2.dens = (double)(sys->sim2.nat) / vol2;
+
 }

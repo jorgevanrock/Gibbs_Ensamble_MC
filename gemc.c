@@ -236,6 +236,7 @@ void mcmove(struct sys sys,atomo atom[],struct sim *sim,struct potenciales pot,s
   xold = atom[o].pos.x;
   yold = atom[o].pos.y;
   if(sys.dim == 3)   zold = atom[o].pos.z;
+  else               zold = 0.0f;
 
   ener_atom(o,&u,&vi,sys,*sim,atom,pot);
   ener_old = u;
@@ -243,7 +244,8 @@ void mcmove(struct sys sys,atomo atom[],struct sim *sim,struct potenciales pot,s
 
   atom[o].pos.x += (2.0f*Random() - 1.0f)*((*sim).dr); 
   atom[o].pos.y += (2.0f*Random() - 1.0f)*((*sim).dr); 
-  if(sys.dim == 3)   atom[o].pos.z += (2.0f*Random() - 1.0f)*((*sim).dr); 
+  if(sys.dim == 3)   atom[o].pos.z += (2.0f*Random() - 1.0f)*((*sim).dr);
+  else               atom[o].pos.z = 0.0f; 
 
   pbc(&(atom[o].pos.x), &(atom[o].pos.y), &(atom[o].pos.z),(*sim).box );
 
@@ -263,7 +265,7 @@ void mcmove(struct sys sys,atomo atom[],struct sim *sim,struct potenciales pot,s
   else{
     atom[o].pos.x = xold; 
     atom[o].pos.y = yold; 
-    if(sys.dim == 3)   atom[o].pos.z = zold; 
+    atom[o].pos.z = zold; 
   }
   (*move).intentos++;
 }
@@ -277,7 +279,7 @@ void ajustaDr(struct move *move,struct sys sys,struct sim *sim){
     fracc = 100.0f * (double)((*move).accep) / (double)((*move).intentos);
     if(fracc > sys.accep)        sim->dr *= 1.05f;
     else                         sim->dr *= 0.95f; 
-    if(sim->dr > 0.5f*minL)     sim->dr  = 0.5f*minL;
+    if(sim->dr > 0.5f*minL)      sim->dr  = 0.5f*minL;
 
     (*move).accep = 0;
     (*move).intentos = 0;
@@ -443,27 +445,33 @@ void creaParti(struct sys sys,struct sim *simA,struct sim *simB,atomo atomA[],at
 void gibbs(struct sys *sys,atomo atom1[],atomo atom2[],struct potenciales pot,struct move *move1,struct move *move2,struct move *volu,int *samp){
 
   double rnd;
-  int step = 0,caso;
-  int Nswap1,Nswap2,Nvol=10,Nmove1,Nmove2;
+  int i,step = 0,caso,nat1,nat2,nat,nvol=50,nswap=50;
+  double ntotal;
 
+  nat1 = (*sys).sim1.nat;
+  nat2 = (*sys).sim2.nat;
+  nat = nat1 + nat2;
+  ntotal = (double)(nat + nvol + nswap);
+  
   screen(step,*samp,*sys,1);
   while(step <= (*sys).mcStep){
-    if(step == 0  ||  step%10 == 0){
-      Nmove1 = (*sys).sim1.nat;
-      Nmove2 = (*sys).sim2.nat;
-      if(Nmove1 > 2  &&  Nmove2 > 2){
-        if(Nmove1 > Nmove2){   Nswap1 = (int)((double)(Nmove2)*0.5f); Nswap2 = Nswap1; }
-        else               {   Nswap1 = (int)((double)(Nmove1)*0.5f); Nswap2 = Nswap1; }   
-      }
-      else{   Nswap1 = 1; Nswap2 = 1;  }
-    }
+    for(i=1;i<= (int)(ntotal);i++){
+      rnd = Random();
+      if(rnd <= (double)(nat1)/ntotal)                  caso = 1;
+      else if(rnd <= (double)(nat)/ntotal)              caso = 2;
+      else if(rnd <= (double)(nat+nvol)/ntotal)         caso = 3;
+      else if(rnd <= (double)(nat+nvol+nswap)/ntotal)   caso = 4;
 
-    rnd = Random() * (double)(Nmove1 + Nmove2 + Nvol + Nswap1 + Nswap2);
-    if(rnd <= Nmove1)                           caso = 1;
-    else if(rnd <= Nmove1+Nmove2)               caso = 2;
-    else if(rnd <= Nmove1+Nmove2+Nvol)          caso = 3;
-    else if(rnd <= Nmove1+Nmove2+Nvol+Nswap1)   caso = 4;
-    else                                        caso = 5;
+      switch(caso){
+        case 1:      mcmove(*sys,atom1,&((*sys).sim1),pot,move1); break;
+        case 2:      mcmove(*sys,atom2,&((*sys).sim2),pot,move2); break;
+        case 3:      mcvol(sys,atom1,atom2,pot,volu); break;
+        case 4:      {
+                     if(Random() < 0.50) { creaParti(*sys,&((*sys).sim1),&((*sys).sim2),atom1,atom2,pot,samp); break;}
+                     else                { creaParti(*sys,&((*sys).sim2),&((*sys).sim1),atom2,atom1,pot,samp); break;}
+                     }
+      }
+    }
 
     if(step%(*sys).nPrint == 0){
       superPrint((*sys).dim,(*sys).sim1.nat,(*sys).sim2.nat,atom1,atom2,(*sys).sim1.box.x);
@@ -473,14 +481,6 @@ void gibbs(struct sys *sys,atomo atom1[],atomo atom2[],struct potenciales pot,st
       ajustaDr(move1,*sys,&(*sys).sim1);
       ajustaDr(move2,*sys,&(*sys).sim2);
       ajustaDv(volu,&(*sys));
-    }
-
-    switch(caso){
-      case 1:      mcmove(*sys,atom1,&((*sys).sim1),pot,move1); break;
-      case 2:      mcmove(*sys,atom2,&((*sys).sim2),pot,move2); break;
-      case 3:      mcvol(sys,atom1,atom2,pot,volu); break;
-      case 4:      creaParti(*sys,&((*sys).sim1),&((*sys).sim2),atom1,atom2,pot,samp); break;
-      case 5:      creaParti(*sys,&((*sys).sim2),&((*sys).sim1),atom2,atom1,pot,samp); break;
     }
     step++;
   }
